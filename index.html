@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="卡路里">
+<link rel="manifest" href="manifest.webmanifest">
+<title>卡路里跟踪器</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:#111827;background:#f5f5f7}
+*{box-sizing:border-box}body{margin:0;background:#f5f5f7}
+.app{max-width:720px;margin:auto;padding:env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom))}
+header{padding:20px 4px 12px;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:28px;margin:0}.date{color:#6b7280;font-size:14px;margin-top:4px}
+.card{background:#fff;border-radius:20px;padding:18px;margin:10px 0;box-shadow:0 2px 14px #0000000a}
+.grid{display:grid;grid-template-columns:1fr 110px;gap:10px}.row{display:flex;gap:10px;align-items:center}
+input,button{font:inherit;border-radius:14px;border:1px solid #ddd;padding:13px;background:#fff}
+input:focus{outline:2px solid #c7d2fe;border-color:#818cf8}
+button{cursor:pointer}.primary{background:#111827;color:white;border-color:#111827;font-weight:700}
+.small{font-size:13px;color:#6b7280}.kcal{font-size:38px;font-weight:800}.unit{color:#6b7280}
+.bar{height:12px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin:12px 0}.fill{height:100%;width:0;background:#111827}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#f8fafc;border-radius:14px;padding:12px}.stat b{display:block;font-size:19px;margin-top:3px}
+.list{display:flex;flex-direction:column;gap:8px}.item{display:flex;justify-content:space-between;gap:10px;padding:12px;background:#f8fafc;border-radius:14px}
+.del{padding:6px 9px;border:0;background:transparent;color:#ef4444}.history{display:flex;gap:8px;overflow:auto}.day{min-width:72px}.day b{display:block}.suggest{display:flex;gap:8px;overflow:auto}.suggest button{white-space:nowrap;padding:9px 12px}
+nav{display:flex;justify-content:space-between;align-items:center}.navbtn{width:42px;padding:9px}
+.deficit{font-weight:800}.over{color:#ef4444}.ok{color:#059669}
+footer{text-align:center;color:#9ca3af;font-size:12px;padding:12px}
+@media(max-width:420px){.grid{grid-template-columns:1fr 95px}.kcal{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><div><h1>卡路里</h1><div class="date" id="dateText"></div></div><button onclick="setGoal()">目标</button></header>
+
+<section class="card">
+<nav><button class="navbtn" onclick="moveDate(-1)">‹</button><div style="text-align:center"><div class="small">当天摄入</div><div class="kcal"><span id="total">0</span> <span class="unit">kcal</span></div></div><button class="navbtn" onclick="moveDate(1)">›</button></nav>
+<div class="bar"><div class="fill" id="fill"></div></div>
+<div class="row" style="justify-content:space-between"><span class="small">目标 <b id="goalText">2000</b> kcal</span><span class="deficit" id="deficit"></span></div>
+</section>
+
+<section class="card">
+<div class="small" style="margin-bottom:8px">添加食物</div>
+<div class="grid"><input id="food" placeholder="例如：鸡胸肉、米饭、香蕉" list="foods"><input id="grams" type="number" min="0" inputmode="decimal" placeholder="克数"></div>
+<datalist id="foods"></datalist>
+<button class="primary" style="width:100%;margin-top:10px" onclick="addFood()">计算并加入今天</button>
+<div class="small" id="hint" style="margin-top:8px"></div>
+</section>
+
+<section class="card">
+<div class="small" style="margin-bottom:8px">常用食物</div>
+<div class="suggest" id="suggest"></div>
+</section>
+
+<section class="card">
+<div class="stats">
+<div class="stat"><span class="small">蛋白质</span><b id="p">0 g</b></div>
+<div class="stat"><span class="small">碳水</span><b id="c">0 g</b></div>
+<div class="stat"><span class="small">脂肪</span><b id="f">0 g</b></div>
+</div>
+</section>
+
+<section class="card"><div class="row" style="justify-content:space-between"><b>当天记录</b><button onclick="clearDay()">清空</button></div><div class="list" id="list" style="margin-top:10px"></div></section>
+
+<section class="card"><b>最近 7 天</b><div class="history" id="history" style="margin-top:10px"></div></section>
+<footer>数据为常见食物估算值；不同品牌、生熟状态和烹饪方式会有差异。</footer>
+</div>
+
+<script>
+const DB={
+"米饭":[116,2.6,25.9,.3],"糙米饭":[123,2.7,25.6,1],"粥":[46,1.1,9.9,.2],"面条":[138,4.5,25,1.5],
+"馒头":[223,7,47,1.1],"面包":[265,9,49,3.2],"全麦面包":[247,13,41,4.2],"燕麦":[389,16.9,66.3,6.9],
+"玉米":[86,3.3,19,1.4],"土豆":[77,2,17.5,.1],"红薯":[86,1.6,20.1,.1],
+"鸡胸肉":[133,23.3,0,4.7],"鸡腿":[181,16.5,0,12],"鸡翅":[203,18.6,0,13.6],
+"鸡蛋":[144,12.8,2.8,8.8],"蛋清":[52,10.9,.7,.2],"牛肉":[170,26,0,7],"牛排":[271,25,0,19],
+"猪肉":[242,27,0,14],"猪里脊":[143,21,0,5.5],"羊肉":[258,25.6,0,16.5],
+"虾":[93,20.1,0,1.7],"三文鱼":[208,20.4,0,13.4],"金枪鱼":[132,28.3,0,.5],"鳕鱼":[82,17.8,0,.7],
+"豆腐":[81,8.1,4.2,3.7],"豆浆":[33,2.9,1.2,1.6],"牛奶":[61,3.2,4.8,3.3],"低脂牛奶":[42,3.4,5,.9],
+"酸奶":[61,3.5,4.7,3.3],"希腊酸奶":[97,9,3.9,5],
+"苹果":[53,.3,13.7,.2],"香蕉":[93,1.4,22.8,.2],"橙子":[48,.8,11.1,.2],"西瓜":[31,.6,7.6,.2],
+"葡萄":[69,.7,18,.2],"草莓":[32,.7,7.7,.3],"蓝莓":[57,.7,14.5,.3],"芒果":[60,.8,15,.4],"菠萝":[50,.5,13.1,.1],
+"西兰花":[34,2.8,6.6,.4],"菠菜":[23,2.9,3.6,.4],"生菜":[15,1.4,2.9,.2],"黄瓜":[15,.7,3.6,.1],
+"番茄":[18,.9,3.9,.2],"胡萝卜":[41,.9,9.6,.2],"蘑菇":[22,3.1,3.3,.3],"洋葱":[40,1.1,9.3,.1],
+"青椒":[20,.9,4.6,.2],"牛油果":[160,2,8.5,14.7],
+"花生":[567,25.8,16.1,49.2],"杏仁":[579,21.2,21.6,49.9],"核桃":[654,15.2,13.7,65.2],"腰果":[553,18.2,30.2,43.9],
+"巧克力":[546,4.9,61.2,31.3],"薯片":[536,7,53,34],"饼干":[480,6,68,20],"冰淇淋":[207,3.5,23.6,11],
+"橄榄油":[884,0,0,100],"花生酱":[588,25,20,50],"蜂蜜":[304,.3,82.4,0],"白糖":[387,0,100,0]
+};
+const aliases={"白米饭":"米饭","鲑鱼":"三文鱼","鸡胸":"鸡胸肉","燕麦片":"燕麦","土豆泥":"土豆"};
+let state=JSON.parse(localStorage.getItem("calorie-v3")||'{"goal":2000,"days":{}}');
+let selected=new Date();
+function key(d){return d.toISOString().slice(0,10)}
+function getDay(){let k=key(selected);return state.days[k]||(state.days[k]=[])}
+function save(){localStorage.setItem("calorie-v3",JSON.stringify(state))}
+function fmt(d){return d.toLocaleDateString("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"short"})}
+function render(){
+ document.getElementById("dateText").textContent=fmt(selected);
+ document.getElementById("goalText").textContent=state.goal;
+ let arr=getDay(), total=arr.reduce((s,x)=>s+x.kcal,0), p=arr.reduce((s,x)=>s+x.p,0), c=arr.reduce((s,x)=>s+x.c,0), f=arr.reduce((s,x)=>s+x.f,0);
+ document.getElementById("total").textContent=Math.round(total);
+ document.getElementById("p").textContent=p.toFixed(1)+" g";document.getElementById("c").textContent=c.toFixed(1)+" g";document.getElementById("f").textContent=f.toFixed(1)+" g";
+ document.getElementById("fill").style.width=Math.min(100,total/state.goal*100)+"%";
+ let diff=state.goal-total, el=document.getElementById("deficit"); el.className="deficit "+(diff<0?"over":"ok"); el.textContent=diff>=0?"还可摄入 "+Math.round(diff)+" kcal":"超标 "+Math.round(-diff)+" kcal";
+ document.getElementById("list").innerHTML=arr.length?arr.map((x,i)=>`<div class="item"><div><b>${x.name}</b><div class="small">${x.g}g · ${Math.round(x.kcal)} kcal · 蛋白质 ${x.p.toFixed(1)}g</div></div><button class="del" onclick="removeFood(${i})">删除</button></div>`).join(""):"<div class='small'>今天还没有记录</div>";
+ renderHistory();save();
+}
+function addFood(){
+ let raw=document.getElementById("food").value.trim(), g=parseFloat(document.getElementById("grams").value);
+ let name=aliases[raw]||raw, data=DB[name];
+ if(!data){document.getElementById("hint").textContent="暂未找到这个食物。先试试常用食物，或输入数据库中的名称。";return}
+ if(!(g>0)){document.getElementById("hint").textContent="请输入有效克数。";return}
+ let [k,p,c,f]=data, factor=g/100;
+ getDay().push({name:raw,g,kcal:k*factor,p:p*factor,c:c*factor,f:f*factor});
+ document.getElementById("food").value="";document.getElementById("grams").value="";document.getElementById("hint").textContent=`已加入：${raw} ${g}g ≈ ${Math.round(k*factor)} kcal`;
+ render();
+}
+function removeFood(i){getDay().splice(i,1);render()}
+function clearDay(){if(confirm("确定清空这一天的记录吗？")){state.days[key(selected)]=[];render()}}
+function moveDate(n){selected.setDate(selected.getDate()+n);render()}
+function setGoal(){let v=prompt("输入每日热量目标（kcal）",state.goal);if(v&&+v>0){state.goal=+v;render()}}
+function pick(n){document.getElementById("food").value=n;document.getElementById("grams").focus()}
+function renderHistory(){
+ let h=document.getElementById("history"), base=new Date(selected);h.innerHTML="";
+ for(let i=0;i<7;i++){let d=new Date(base);d.setDate(base.getDate()-i);let total=(state.days[key(d)]||[]).reduce((s,x)=>s+x.kcal,0);let b=document.createElement("button");b.className="day";b.innerHTML=`<b>${i===0?"当天":d.getMonth()+1+"/"+d.getDate()}</b><span class="small">${Math.round(total)} kcal</span>`;b.onclick=()=>{selected=d;render()};h.appendChild(b)}
+}
+let dl=document.getElementById("foods");Object.keys(DB).forEach(x=>{let o=document.createElement("option");o.value=x;dl.appendChild(o)});
+let sug=["鸡胸肉","米饭","鸡蛋","香蕉","牛奶","西兰花","三文鱼","牛肉"];let s=document.getElementById("suggest");sug.forEach(x=>{let b=document.createElement("button");b.textContent=x;b.onclick=()=>pick(x);s.appendChild(b)});
+render();
+</script>
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
+</body></html>
