@@ -29,6 +29,15 @@ nav{display:flex;justify-content:space-between;align-items:center}.navbtn{width:
 .deficit{font-weight:800}.over{color:#ef4444}.ok{color:#059669}
 footer{text-align:center;color:#9ca3af;font-size:12px;padding:12px}
 @media(max-width:420px){.grid{grid-template-columns:1fr 95px}.kcal{font-size:34px}}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+.cal .wk{font-size:12px;color:#9ca3af;text-align:center;padding:4px 0}
+.cal .d{min-height:52px;background:#f8fafc;border-radius:12px;padding:6px 4px;text-align:center;font-size:12px;color:#9ca3af;border:2px solid transparent;cursor:pointer}
+.cal .d b{display:block;font-size:13px;color:#111827}
+.cal .d.has{background:#fff;border-color:#e5e7eb;color:#6b7280}
+.cal .d.ok b{color:#059669}.cal .d.over b{color:#ef4444}
+.cal .d.today{border-color:#111827}
+.cal .d.sel{background:#111827;border-color:#111827}.cal .d.sel b,.cal .d.sel span{color:#fff}
+.cal .d.empty{background:transparent;cursor:default}
 </style>
 </head>
 <body>
@@ -65,6 +74,13 @@ footer{text-align:center;color:#9ca3af;font-size:12px;padding:12px}
 <section class="card"><div class="row" style="justify-content:space-between"><b>当天记录</b><button onclick="clearDay()">清空</button></div><div class="list" id="list" style="margin-top:10px"></div></section>
 
 <section class="card"><b>最近 7 天</b><div class="history" id="history" style="margin-top:10px"></div></section>
+<section class="card">
+<div class="row" style="justify-content:space-between"><b>历史日历</b><div class="row"><button class="navbtn" onclick="moveMonth(-1)">‹</button><span class="small" id="monthText" style="min-width:88px;text-align:center"></span><button class="navbtn" onclick="moveMonth(1)">›</button></div></div>
+<div class="cal" id="calendar"></div>
+<div class="small" id="calStats" style="margin-top:10px"></div>
+<div class="row" style="margin-top:10px"><button class="small" onclick="exportData()" style="flex:1">导出备份</button><button class="small" onclick="document.getElementById('importFile').click()" style="flex:1">导入备份</button><input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importData(event)"></div>
+<div class="small" style="margin-top:6px">备份为 JSON 文件，换手机或清缓存后可导入恢复。</div>
+</section>
 <footer>数据为常见食物估算值；不同品牌、生熟状态和烹饪方式会有差异。</footer>
 </div>
 
@@ -104,7 +120,7 @@ function render(){
  document.getElementById("fill").style.width=Math.min(100,total/state.goal*100)+"%";
  let diff=state.goal-total, el=document.getElementById("deficit"); el.className="deficit "+(diff<0?"over":"ok"); el.textContent=diff>=0?"还可摄入 "+Math.round(diff)+" kcal":"超标 "+Math.round(-diff)+" kcal";
  document.getElementById("list").innerHTML=arr.length?arr.map((x,i)=>`<div class="item"><div><b>${x.name}</b><div class="small">${x.g}g · ${Math.round(x.kcal)} kcal · 蛋白质 ${x.p.toFixed(1)}g</div></div><button class="del" onclick="removeFood(${i})">删除</button></div>`).join(""):"<div class='small'>今天还没有记录</div>";
- renderHistory();save();
+ renderHistory();renderCalendar();save();
 }
 function addFood(){
  let raw=document.getElementById("food").value.trim(), g=parseFloat(document.getElementById("grams").value);
@@ -121,6 +137,47 @@ function clearDay(){if(confirm("确定清空这一天的记录吗？")){state.da
 function moveDate(n){selected.setDate(selected.getDate()+n);render()}
 function setGoal(){let v=prompt("输入每日热量目标（kcal）",state.goal);if(v&&+v>0){state.goal=+v;render()}}
 function pick(n){document.getElementById("food").value=n;document.getElementById("grams").focus()}
+let viewMonth=new Date();viewMonth.setDate(1);
+function moveMonth(n){viewMonth.setMonth(viewMonth.getMonth()+n);renderCalendar()}
+function pickDay(y,m,d){selected=new Date(y,m,d);render()}
+function dayTotal(k){return (state.days[k]||[]).reduce((s,x)=>s+x.kcal,0)}
+function renderCalendar(){
+ let y=viewMonth.getFullYear(),m=viewMonth.getMonth();
+ document.getElementById("monthText").textContent=y+"年"+(m+1)+"月";
+ let el=document.getElementById("calendar");el.innerHTML="";
+ ["一","二","三","四","五","六","日"].forEach(w=>{let s=document.createElement("div");s.className="wk";s.textContent=w;el.appendChild(s)});
+ let first=(new Date(y,m,1).getDay()+6)%7,days=new Date(y,m+1,0).getDate();
+ for(let i=0;i<first;i++){let s=document.createElement("div");s.className="d empty";el.appendChild(s)}
+ let todayK=key(new Date()),selK=key(selected),mkPrefix=y+"-"+String(m+1).padStart(2,"0");
+ for(let d=1;d<=days;d++){
+  let dt=new Date(y,m,d),k=key(dt),has=!!state.days[k],total=has?dayTotal(k):0;
+  let c=document.createElement("div");
+  c.className="d"+(has?" has":"")+(has?(total>state.goal?" over":" ok"):"")+(k===todayK?" today":"")+(k===selK?" sel":"");
+  c.innerHTML="<b>"+d+"</b>"+(has?"<span>"+Math.round(total)+"</span>":"");
+  if(has)c.onclick=(()=>{let yy=y,mm=m,dd=d;return ()=>pickDay(yy,mm,dd)})();
+  el.appendChild(c);
+ }
+ let streak=0,dt=new Date();if(!state.days[key(dt)])dt.setDate(dt.getDate()-1);
+ while(state.days[key(dt)]&&streak<3650){streak++;dt.setDate(dt.getDate()-1)}
+ let mk=0,mt=0;Object.keys(state.days).forEach(k=>{if(k.slice(0,7)===mkPrefix){mk++;mt+=dayTotal(k)}});
+ document.getElementById("calStats").textContent="连续记录 "+streak+" 天 · 本月已记 "+mk+" 天"+(mk?"，平均 "+Math.round(mt/mk)+" kcal/天":"");
+}
+function exportData(){
+ let blob=new Blob([JSON.stringify(state)],{type:"application/json"});
+ let a=document.createElement("a");a.href=URL.createObjectURL(blob);
+ a.download="calorie-backup-"+key(new Date())+".json";document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function importData(e){
+ let f=e.target.files[0];if(!f)return;
+ let r=new FileReader();
+ r.onload=()=>{try{
+  let d=JSON.parse(r.result);
+  if(d&&typeof d.goal==="number"&&d.days&&typeof d.days==="object"){state=d;save();render();alert("已导入备份，共 "+Object.keys(d.days).length+" 天的数据")}
+  else alert("文件格式不对，不是有效的备份文件");
+ }catch(err){alert("文件读取失败")}};
+ r.readAsText(f);e.target.value="";
+}
 function renderHistory(){
  let h=document.getElementById("history"), base=new Date(selected);h.innerHTML="";
  for(let i=0;i<7;i++){let d=new Date(base);d.setDate(base.getDate()-i);let total=(state.days[key(d)]||[]).reduce((s,x)=>s+x.kcal,0);let b=document.createElement("button");b.className="day";b.innerHTML=`<b>${i===0?"当天":d.getMonth()+1+"/"+d.getDate()}</b><span class="small">${Math.round(total)} kcal</span>`;b.onclick=()=>{selected=d;render()};h.appendChild(b)}
@@ -130,4 +187,5 @@ let sug=["鸡胸肉","米饭","鸡蛋","香蕉","牛奶","西兰花","三文鱼"
 render();
 </script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
-</body></html>
+</body></html>",
+          "uri": "repo://hwl666-tech/calorie-trackerv1/sha/850024782de339d4cf3ff661eae8c14b18090e7a/contents/index.html
